@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wiki Thanks Tool</title>
+
+<!-- Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<style>
+    body {
+        font-family: 'Segoe UI', Arial, sans-serif;
+        margin: 20px;
+        background: #f4f6f9;
+    }
+
+    h1 {
+        text-align: center;
+        font-size: 32px;
+        color: #333;
+    }
+
+    .card {
+        background: white;
+        padding: 15px 20px;
+        margin: 15px auto;
+        width: 90%;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        animation: fade 0.4s ease-in-out;
+    }
+
+    @keyframes fade {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    button {
+        background: #0078ff;
+        border: none;
+        color: white;
+        padding: 8px 15px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        background: #005fcc;
+    }
+
+    #contributors .card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .avatar {
+        width: 42px;
+        height: 42px;
+        background: #0078ff;
+        color: white;
+        border-radius: 50%;
+        font-size: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+
+    th {
+        background: #0078ff;
+        color: white;
+        padding: 10px;
+    }
+
+    td {
+        background: #fafafa;
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+    }
+
+    #articleHTML {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .thank-btn {
+        background: #22c55e;
+    }
+    .thank-btn:hover {
+        background: #15803d;
+    }
+
+</style>
+</head>
+<body>
+
+<h1><i class="fa-solid fa-handshake"></i> Wiki Thanks Tool</h1>
+
+<div class="card" id="loginArea">
+    <button onclick="login()"><i class="fa-brands fa-wikipedia-w"></i> Login with Wiki</button>
+</div>
+
+<div class="card" id="userArea" style="display:none;">
+    Logged in as: <b id="username"></b>
+    <button onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+</div>
+
+<div class="card">
+    <form onsubmit="loadPage(); return false;">
+        <label>Enter Page Title:</label>
+        <input id="pageTitle" placeholder="Albert Einstein" style="padding:8px; width:250px;">
+        <button><i class="fa-solid fa-magnifying-glass"></i> Load Page</button>
+    </form>
+</div>
+
+<div id="message" class="card" style="display:none;"></div>
+
+<div id="articleSection" class="card" style="display:none;">
+    <h2><i class="fa-solid fa-file-lines"></i> Article Preview</h2>
+    <div id="articleHTML"></div>
+</div>
+
+<div id="revisionSection" class="card" style="display:none;">
+    <h2><i class="fa-solid fa-clock-rotate-left"></i> Revision History</h2>
+    <div id="revTable"></div>
+</div>
+
+<div id="contributorsSection" class="card" style="display:none;">
+    <h2><i class="fa-solid fa-users"></i> Contributors</h2>
+    <div id="contributors"></div>
+</div>
+
+
+<script>
+// ---------------------- CONFIG -------------------------
+const API = "https://en.wikipedia.org/w/api.php?origin=*";
+
+// ---------------------- LOGIN MOCK ---------------------
+let USER = null;
+
+function login() {
+    alert("OAuth login placeholder. Replace with real backend login.");
+    USER = { name: "DemoUser" };
+
+    document.getElementById("loginArea").style.display = "none";
+    document.getElementById("userArea").style.display = "block";
+    document.getElementById("username").innerText = USER.name;
+}
+
+function logout() {
+    USER = null;
+    document.getElementById("loginArea").style.display = "block";
+    document.getElementById("userArea").style.display = "none";
+}
+
+// ---------------------- LOAD PAGE ----------------------
+async function loadPage() {
+    const title = document.getElementById("pageTitle").value;
+    if (!title) return alert("Enter a page title");
+
+    showMessage("Loading article...");
+
+    await loadParsedHTML(title);
+    await loadRevisions(title);
+
+    hideMessage();
+}
+
+// ---------------------- PARSED HTML ----------------------
+async function loadParsedHTML(title) {
+    const url = `${API}&action=parse&page=${encodeURIComponent(title)}&prop=text&format=json`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const html = data.parse ? data.parse.text["*"] : "<i>No article found</i>";
+
+    document.getElementById("articleHTML").innerHTML = html;
+    document.getElementById("articleSection").style.display = "block";
+}
+
+// ---------------------- REVISIONS ----------------------
+async function loadRevisions(title) {
+    const url = `${API}&action=query&prop=revisions&rvprop=ids|user|timestamp|comment|size&rvlimit=50&rvdir=newer&titles=${encodeURIComponent(title)}&format=json`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const pages = data.query.pages;
+    const page = Object.values(pages)[0];
+
+    if (!page.revisions) {
+        document.getElementById("revTable").innerHTML = "<p>No revisions found.</p>";
+        return;
+    }
+
+    showRevisions(page.revisions);
+    showContributors(page.revisions);
+
+    document.getElementById("revisionSection").style.display = "block";
+    document.getElementById("contributorsSection").style.display = "block";
+}
+
+// ---------------------- SHOW REVISIONS ----------------------
+function showRevisions(revs) {
+    let html = `
+        <table>
+            <tr>
+                <th>Rev ID</th>
+                <th>User</th>
+                <th>Timestamp</th>
+                <th>Comment</th>
+                <th>Size</th>
+                <th>Thank</th>
+            </tr>
+    `;
+
+    revs.forEach(r => {
+        html += `
+        <tr>
+            <td>${r.revid}</td>
+            <td>${r.user}</td>
+            <td>${r.timestamp}</td>
+            <td>${r.comment || ""}</td>
+            <td>${r.size}</td>
+            <td>
+                <button class="thank-btn" onclick="sendThank(${r.revid})">
+                    <i class="fa-solid fa-heart"></i> Thank
+                </button>
+            </td>
+        </tr>`;
+    });
+
+    html += "</table>";
+    document.getElementById("revTable").innerHTML = html;
+}
+
+// ---------------------- CONTRIBUTORS LIST ----------------------
+function showContributors(revs) {
+    const map = {};
+
+    for (const r of revs) {
+        if (!map[r.user]) map[r.user] = 0;
+        map[r.user]++;
+    }
+
+    let html = "";
+
+    Object.keys(map).forEach(user => {
+        const initials = user.charAt(0).toUpperCase();
+        const revId = revs.find(r => r.user === user).revid;
+
+        html += `
+            <div class="card">
+                <div class="avatar">${initials}</div>
+                <div>
+                    <b>${user}</b>  
+                    <div>${map[user]} edits</div>
+                </div>
+
+                <button class="thank-btn" onclick="sendThank(${revId})">
+                    <i class="fa-solid fa-hands-clapping"></i> Thank
+                </button>
+            </div>
+        `;
+    });
+
+    document.getElementById("contributors").innerHTML = html;
+}
+
+// ---------------------- SEND THANK ----------------------
+function sendThank(revId) {
+    if (!USER) return alert("Please login first!");
+
+    alert(`Thank API placeholder.\nThis will send THANK for revision ${revId}.\nConnect backend API here.`);
+}
+
+// ---------------------- MESSAGE HELPERS ----------------------
+function showMessage(msg) {
+    const box = document.getElementById("message");
+    box.innerText = msg;
+    box.style.display = "block";
+}
+
+function hideMessage() {
+    document.getElementById("message").style.display = "none";
+}
+</script>
+
+</body>
+</html>
